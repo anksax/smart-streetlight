@@ -1,0 +1,26 @@
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+id_rsa*
+id_ed25519*
+credentials*.json
+secrets*.json
+# Environments, caches and generated artifacts
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+node_modules/
+*.zip
+*.log
+.DS_Store
+Thumbs.db

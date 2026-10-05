@@ -1,0 +1,4 @@
+Flask>=3.0,<4
+gunicorn>=23,<24
+azure-data-tables>=12.6,<13
+azure-identity>=1.19,<2
