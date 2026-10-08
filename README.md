@@ -143,3 +143,7 @@ python3 -m unittest discover -s functions -p 'test_*.py'
 Check a full automatic cycle, move activity, stop activity and observe hold expiry, then cross 280/300 lux in both directions. Verify wrong passwords still return 401 and negative lux returns 400. Do not treat local decision tests as evidence that Azure deployment succeeded.
 
 Limitations: no physical sensors, measured energy, fault alerts or manual per-lamp override in this release. The GitHub Pages standalone demo remains separate and uses its original stateless rules.
+
+## Assignment acceptance testing
+
+See [TESTING.md](TESTING.md) for requirements mapping, screenshot evidence and reproducible tests. Run `python3 tests/live_acceptance.py` on the VM with the simulator environment variables exported to generate CSV/JSON actual results. Deploy the latest Function and dashboard first. Local tests and CI do not certify live Azure connectivity.

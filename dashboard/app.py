@@ -2,6 +2,7 @@ import hmac
 import logging
 import math
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from heapq import nlargest
 from flask import Flask, jsonify, render_template, request
@@ -11,7 +12,7 @@ from azure.identity import ManagedIdentityCredential
 
 app = Flask(__name__)
 DEFAULTS = dict(hour=22.0, lux=40.0, activity_lamp=0, follow=True, auto_demo=False)
-FIELDS = ['received_at','ambient_lux','simulation_hour','motion','state','brightness','reason','activity_position','demo_mode','motion_held','hold_remaining_seconds']
+FIELDS = ['sensor_timestamp','received_at','ambient_lux','simulation_hour','motion','state','brightness','reason','activity_position','demo_mode','motion_held','hold_remaining_seconds']
 
 def storage():
     return TableServiceClient(endpoint=os.environ['TABLE_STORAGE_ENDPOINT'], credential=ManagedIdentityCredential())
@@ -102,7 +103,7 @@ def state():
 @app.get('/api/history')
 def history():
     lamp=request.args.get('lamp','L01')
-    if lamp not in [f'L{i:02}' for i in range(1,6)]:
+    if lamp not in [f'L{i:02}' for i in range(1,6)] and not re.fullmatch(r'QA_[a-f0-9]{8}_[0-9]{2}', lamp):
         return jsonify(error='Unknown lamp'),400
     try:
         cutoff=(datetime.now(timezone.utc)-timedelta(minutes=15)).strftime('%Y%m%dT%H%M%S%f')

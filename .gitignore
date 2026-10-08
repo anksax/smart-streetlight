@@ -24,3 +24,6 @@ node_modules/
 *.log
 .DS_Store
 Thumbs.db
+
+# Generated assessment evidence; review before deliberately sharing.
+test-results/

@@ -1,8 +1,6 @@
 import json
 import logging
-import math
 import os
-import re
 import uuid
 from datetime import datetime, timezone
 
@@ -11,6 +9,7 @@ from azure.core.exceptions import ResourceNotFoundError
 from azure.data.tables import TableServiceClient, UpdateMode
 from azure.identity import ManagedIdentityCredential
 from lighting import decide
+from validation import validate
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
@@ -18,30 +17,6 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 def response(data, status=200):
     return func.HttpResponse(json.dumps(data), status_code=status,
                              mimetype="application/json")
-
-
-def validate(data):
-    if not isinstance(data, dict):
-        raise ValueError("Expected a JSON object")
-    if not isinstance(data.get("lamp_id"), str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", data["lamp_id"]):
-        raise ValueError("Invalid lamp_id")
-    for field, limit in [("ambient_lux", 100000), ("simulation_hour", 24)]:
-        value = data.get(field)
-        if type(value) not in (int, float) or not math.isfinite(value) or value < 0 or value > limit:
-            raise ValueError("Invalid " + field)
-    if data["simulation_hour"] >= 24:
-        raise ValueError("Invalid simulation_hour")
-    if type(data.get("motion")) is not bool:
-        raise ValueError("Invalid motion")
-    timestamp = datetime.fromisoformat(data["timestamp"].replace("Z", "+00:00"))
-    if timestamp.tzinfo is None:
-        raise ValueError("Timestamp must include timezone")
-    position = data.get("activity_position", 0)
-    if type(position) is not int or not 0 <= position <= 5:
-        raise ValueError("Invalid activity_position")
-    if type(data.get("demo_mode", False)) is not bool:
-        raise ValueError("Invalid demo_mode")
-    return timestamp
 
 
 @app.route(route="process-reading", methods=["POST"])

@@ -5,7 +5,7 @@ python3 - <<'PY'
 from zipfile import ZipFile, ZIP_DEFLATED
 from pathlib import Path
 with ZipFile('function.zip','w',ZIP_DEFLATED) as archive:
-    for name in ['function_app.py','lighting.py','requirements.txt','host.json']:
+    for name in ['function_app.py','lighting.py','validation.py','requirements.txt','host.json']:
         archive.write(Path('functions')/name,name)
 PY
 az functionapp deployment source config-zip \
