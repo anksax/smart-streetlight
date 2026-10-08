@@ -1,4 +1,5 @@
 """Continuously publish five simulated lamps; settings remain dashboard-controlled."""
+import math
 import json
 import os
 import random
@@ -37,14 +38,31 @@ def validate(config):
     return hour, lux, position, config["follow"]
 
 
+def demo_inputs(elapsed):
+    # One compressed day lasts 120 seconds; movement crosses five lamps in 30s.
+    hour = (elapsed % 120) / 120 * 24
+    lux = round(40 + 760 * max(0, math.sin(math.pi * (hour - 6) / 12)), 1)
+    position = int(elapsed // 6) % 5 + 1
+    return hour, lux, position
+
+
 def main():
     with requests.Session() as session, ThreadPoolExecutor(max_workers=5) as pool:
+        demo_started = None
         while True:
             started = time.monotonic()
             try:
                 reply = session.get(SETTINGS_URL, timeout=(5, 10))
                 reply.raise_for_status()
-                hour, lux, position, follow = validate(reply.json())
+                config = reply.json()
+                hour, lux, position, follow = validate(config)
+                auto_demo = config.get("auto_demo", False) is True
+                if auto_demo:
+                    if demo_started is None:
+                        demo_started = time.monotonic()
+                    hour, lux, position = demo_inputs(time.monotonic() - demo_started)
+                else:
+                    demo_started = None
             except (requests.RequestException, ValueError, KeyError, TypeError):
                 print("Settings unavailable; retrying without publishing outdated inputs.", flush=True)
             else:
@@ -59,6 +77,8 @@ def main():
                         simulation_hour=hour,
                         ambient_lux=round(max(0, lux + random.uniform(-2, 2)), 1),
                         motion=active,
+                        activity_position=position,
+                        demo_mode=auto_demo,
                     ))
                 # Await the complete batch: cycles never overlap.
                 for _ in pool.map(send, readings):

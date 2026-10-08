@@ -28,7 +28,7 @@ for(let i=1;i<=5;i++){
 function inspect(){
  const lamp=fleet.find(item=>item.lamp_id===selected);if(!lamp)return;
  set('asset-title',`Lamp ${selected}`);set('asset-status',lamp.online?'ONLINE':lamp.state==='WAITING'?'WAITING':'OFFLINE');el('asset-status').className='pill'+(lamp.online?'':' warning');
- set('asset-lux',lamp.ambient_lux===undefined?'—':`${Number(lamp.ambient_lux).toFixed(1)} lx`);set('asset-brightness',`${lamp.brightness}%`);set('asset-motion',lamp.motion===undefined?'—':lamp.motion?'Detected':'None');set('reason',lamp.reason);
+ set('asset-lux',lamp.ambient_lux===undefined?'—':`${Number(lamp.ambient_lux).toFixed(1)} lx`);set('asset-brightness',`${lamp.brightness}%`);set('asset-motion',lamp.motion===undefined?'—':lamp.motion?'Detected':'None');set('reason',lamp.reason+(lamp.motion_held?' · '+lamp.hold_remaining_seconds+'s hold remaining':''));
  set('received',lamp.received_at?`Received ${time(lamp.received_at)} · ${lamp.age_seconds}s ago${lamp.online?'':' · last-known command'}`:'Start the VM simulator to receive readings');
 }
 async function read(url){const response=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(12000)});const data=await response.json();if(!response.ok)throw new Error(data.error||'Unable to connect');return data;}
@@ -36,18 +36,21 @@ async function refresh(){
  if(refreshing)return;clearTimeout(refreshTimer);refreshing=true;
  try{
   const data=await read('/api/state');fleet=data.lamps;
-  if(pendingScenario){const p=pendingScenario;const applied=fleet.every(lamp=>{const n=Number(lamp.lamp_id.slice(1));const motion=p.activity_lamp!==0&&(n===p.activity_lamp||(p.follow&&n>p.activity_lamp&&n<=p.activity_lamp+2));return lamp.online&&Date.parse(lamp.received_at)>=p.savedAt&&Number(lamp.simulation_hour)===p.hour&&Math.abs(Number(lamp.ambient_lux)-p.lux)<=2.1&&lamp.motion===motion;});if(applied){set('save-status','Scenario applied. All five lamps have reported updated readings.');pendingScenario=null;}else if(Date.now()-p.savedAt>20000){set('save-status','Settings saved; waiting for all lamps. Check the VM simulator if this continues.');}}
+  if(pendingScenario){const p=pendingScenario;const applied=fleet.every(lamp=>{const n=Number(lamp.lamp_id.slice(1));const motion=p.activity_lamp!==0&&(n===p.activity_lamp||(p.follow&&n>p.activity_lamp&&n<=p.activity_lamp+2));return lamp.online&&Date.parse(lamp.received_at)>=p.savedAt&&(p.auto_demo?lamp.demo_mode===true:Number(lamp.simulation_hour)===p.hour)&&(p.auto_demo||(Math.abs(Number(lamp.ambient_lux)-p.lux)<=2.1&&lamp.motion===motion));});if(applied){set('save-status','Scenario applied. All five lamps have reported updated readings.');pendingScenario=null;}else if(Date.now()-p.savedAt>20000){set('save-status','Settings saved; waiting for all lamps. Check the VM simulator if this continues.');}}
 
   const online=fleet.filter(item=>item.online).length;
   el('online').replaceChildren(document.createTextNode(online));const total=document.createElement('small');total.textContent='/ 5';el('online').appendChild(total);
   set('states',['ON','DIM','OFF'].map(state=>fleet.filter(item=>item.state===state).length).join(' / '));
   const reported=fleet.filter(item=>item.state!=='WAITING');set('average',reported.length?`${Math.round(reported.reduce((sum,item)=>sum+item.brightness,0)/reported.length)}%`:'—');set('average-note',online===5?'Latest received commands':'Includes last-known commands');
-  const hours=Number(data.settings.hour);el('scene').classList.toggle('daylight',Number(data.settings.lux)>=300);const mins=Math.round(hours*60);set('environment',`${String(Math.floor(mins/60)).padStart(2,'0')}:${String(mins%60).padStart(2,'0')}`);set('environment-note',`${data.settings.lux} lux · simulated time`);
+  const latest=fleet.filter(l=>l.online).sort((a,b)=>Date.parse(b.received_at)-Date.parse(a.received_at))[0];
+  const environment=latest?{hour:latest.simulation_hour,lux:latest.ambient_lux}:data.settings;
+  const hours=Number(environment.hour);el('scene').classList.toggle('daylight',Number(environment.lux)>=300);const mins=Math.round(hours*60);set('environment',`${String(Math.floor(mins/60)).padStart(2,'0')}:${String(mins%60).padStart(2,'0')}`);set('environment-note',`${Number(environment.lux).toFixed(1)} lux · simulated time`);
   set('connection',online===5?'ALL SYSTEMS ONLINE':online?`${online} / 5 ONLINE`:'TELEMETRY OFFLINE');el('connection').className='pill'+(online===5?'':' warning');set('last-refresh',`Refreshed ${time(data.server_time)}`);
   el('notice').hidden=online===5;set('notice',online===5?'':`${5-online} lamp(s) have missing or stale telemetry. Displayed brightness is the last recorded command.`);
   for(const lamp of fleet){const button=el(`lamp-${lamp.lamp_id}`);button.querySelector('.glow').style.opacity=lamp.brightness/100;button.querySelector('.bulb').style.background=lamp.brightness>0?'#ffe09c':'#52667c';button.querySelector('.lamp-state').textContent=`${lamp.state} · ${lamp.brightness}%${lamp.online?'':' · STALE'}`;}
-  if(!initialized){for(const key of ['hour','lux'])el(key).value=data.settings[key];el('activity').value=data.settings.activity_lamp;el('follow').checked=data.settings.follow;initialized=true;}
-  const position=data.settings.activity_lamp;el('activity-marker').hidden=!position;el('activity-marker').style.left=`${(position-.5)*20}%`;
+  if(!initialized){for(const key of ['hour','lux'])el(key).value=data.settings[key];el('activity').value=data.settings.activity_lamp;el('follow').checked=data.settings.follow;el('auto-demo').checked=!!data.settings.auto_demo;initialized=true;}
+  set('demo-status',data.settings.auto_demo?'Automatic demo requested · time and activity come from VM telemetry':'Manual scenario · use controls below');
+  const position=latest&&latest.activity_position!=null?latest.activity_position:data.settings.activity_lamp;el('activity-marker').hidden=!position;el('activity-marker').style.left=`${(position-.5)*20}%`;
   inspect();
  }catch(error){set('connection','CONNECTION ERROR');el('connection').className='pill error';el('notice').hidden=false;set('notice',`${error.message}. Displayed readings may be stale.`);set('asset-status','STALE');}
  finally{refreshing=false;refreshTimer=setTimeout(refresh,document.hidden?10000:2000);}
@@ -65,9 +68,9 @@ async function loadHistory(){
  }catch(error){if(generation===historyGeneration){el('chart').replaceChildren();el('history-rows').replaceChildren();set('history-status',error.message);}}
 }
 async function save(event){if(event)event.preventDefault();if(saving)return;if(!el('control-form').reportValidity())return;saving=true;document.querySelectorAll('#control-form button').forEach(button=>button.disabled=true);set('save-status','Applying scenario…');
- try{const response=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json','X-Control-Token':el('password').value},signal:AbortSignal.timeout(12000),body:JSON.stringify({hour:Number(el('hour').value),lux:Number(el('lux').value),activity_lamp:Number(el('activity').value),follow:el('follow').checked})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Unable to save');pendingScenario={...data,savedAt:Date.now()};set('save-status','Settings saved. Waiting for live lamp confirmation…');refresh();}
+ try{const response=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json','X-Control-Token':el('password').value},signal:AbortSignal.timeout(12000),body:JSON.stringify({hour:Number(el('hour').value),lux:Number(el('lux').value),activity_lamp:Number(el('activity').value),follow:el('follow').checked,auto_demo:el('auto-demo').checked})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Unable to save');pendingScenario={...data,savedAt:Date.now()};set('save-status','Settings saved. Waiting for live lamp confirmation…');refresh();}
  catch(error){set('save-status',error.message);}finally{saving=false;document.querySelectorAll('#control-form button').forEach(button=>button.disabled=false);}}
 el('control-form').onsubmit=save;
-el('day').onclick=()=>{el('hour').value=12;el('lux').value=600;el('activity').value=0;save();};el('night').onclick=()=>{el('hour').value=22;el('lux').value=40;el('activity').value=0;save();};el('move').onclick=()=>{el('hour').value=22;el('lux').value=40;el('activity').value=Number(el('activity').value)%5+1;save();};
+el('day').onclick=()=>{el('auto-demo').checked=false;el('hour').value=12;el('lux').value=600;el('activity').value=0;save();};el('night').onclick=()=>{el('auto-demo').checked=false;el('hour').value=22;el('lux').value=40;el('activity').value=0;save();};el('move').onclick=()=>{el('auto-demo').checked=false;el('hour').value=22;el('lux').value=40;el('activity').value=Number(el('activity').value)%5+1;save();};
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){refresh();loadHistory();}});
 refresh();loadHistory();setInterval(loadHistory,15000);

@@ -6,7 +6,7 @@ Azure IoT simulation and an operations dashboard for five streetlights, produced
 
 - Five selectable lamps, live connectivity, ON/DIM/OFF states and commanded brightness.
 - Light and dark dashboard themes, with a browser-local theme preference.
-- Daylight street background for simulated hours 06:00–17:59, independent of dashboard theme.
+- Daylight street background at ambient light of 300 lux or above, independent of dashboard theme.
 - Selected-lamp lux, motion, decision reason and last received telemetry.
 - Cloud-stored brightness history: up to 120 readings per lamp from the last 15 minutes.
 - Password-protected daylight, empty-night and movement presets.
@@ -26,7 +26,7 @@ flowchart LR
 
 The VM polls `/api/settings`, simulates five sensors and posts readings to the existing Function with the `x-functions-key` header. The Function processes telemetry and stores it; the dashboard reads storage using its App Service managed identity. Dashboard controls write to the Settings table after validating the control password.
 
-**The deployed Azure Function’s source is not included in the ZIP or this repository.** A compatible deployed Function is required; this repository cannot reproduce or redeploy its processing logic.
+The stateful HTTP Function source is included under functions/. Deploy it explicitly with deploy-function.sh to enable motion hold and hysteresis.
 
 Existing resource names used by the deployment script:
 
@@ -82,7 +82,7 @@ Set `STREETLIGHT_URL`, `STREETLIGHT_KEY` and `DASHBOARD_URL` in the simulator en
 python simulator/simulator.py
 ```
 
-It sends five readings per cycle and waits five seconds between cycles. Stop with Ctrl+C. Follow mode activates the chosen lamp and up to two subsequent lamps; automatic movement and delayed dimming are not implemented. Avoid running duplicate simulators against the same lamp IDs.
+It sends five readings concurrently on a two-second cycle. Stop with Ctrl+C. Follow mode activates the chosen lamp and up to two subsequent lamps. Enable Automatic demo and apply settings to cycle a full day in 120 seconds and move activity every six seconds. Disable it and apply settings to return to manual controls. Avoid duplicate simulators: stateful hold and hysteresis assume one ordered producer per lamp.
 
 ## Dashboard deployment
 
@@ -100,7 +100,7 @@ After an intentional deployment, verify the page, `/api/state`, lamp history, th
 
 ## Data interpretation
 
-ONLINE means telemetry arrived within 45 seconds. Offline brightness is the last-known command. Mean brightness includes stale reported commands and is not an energy measurement. Environment settings can update before the VM's next sensor cycle. The daylight background follows simulated time, while actual brightness comes from the deployed Function.
+ONLINE means telemetry arrived within 45 seconds. Offline brightness is the last-known command. Mean brightness includes stale reported commands and is not an energy measurement. Environment settings can update before the VM's next sensor cycle. The background uses the latest online lux telemetry; actual brightness comes from the Function. Smooth glow animation represents commanded brightness, not measured electrical output.
 
 ## Security and checks
 
@@ -114,4 +114,32 @@ node --check dashboard/static/app.js
 bash -n deploy-dashboard.sh
 ```
 
-Cloud connectivity and the external Function must be verified in Azure separately. No Function source or standalone UI smoke-test workflow was supplied in the ZIP.
+Cloud connectivity and the external Function must be verified in Azure separately. Function source and decision tests are included under functions/. Browser rendering and live Azure connectivity still require deployment verification.
+
+## Reactive lighting upgrade
+
+Deploy all three components to enable the complete feature set. Publishing to GitHub alone does not deploy Azure.
+
+1. In Azure Cloud Shell, run `bash deploy-function.sh` to replace the existing HTTP Function with the included stateful lighting implementation. Existing managed identity and TABLE_STORAGE_ENDPOINT settings are required.
+2. Run `bash deploy-dashboard.sh`.
+3. Copy `simulator/simulator.py` to the VM's `~/smart-streetlight/simulator.py` and restart `streetlight-simulator`.
+4. Hard-refresh the dashboard. Enter the control password, enable Automatic demo and Apply scenario.
+
+Lighting rules:
+- First reading: original 300-lux OFF threshold.
+- Once OFF: remain OFF until lux falls below 280.
+- Once lighting is active: remain active until lux reaches 300.
+- Motion keeps a lamp ON and refreshes a 12-second server-time hold.
+- After motion ends, ON lasts until the hold expires, then DIM.
+- Daylight immediately cancels a hold and switches OFF.
+- Manual presets disable automatic mode; activity hold can still take 12 seconds to clear.
+
+This changes boundary-test expectations: a 299-lux reading after daylight remains OFF. Test thresholds with the previous state recorded. Existing Readings and LampState tables are reused; no new roles or tables are required. The timer persists in LampState across Function restarts; automatic demo position restarts when the simulator restarts.
+
+Verification:
+```bash
+python3 -m unittest discover -s functions -p 'test_*.py'
+```
+Check a full automatic cycle, move activity, stop activity and observe hold expiry, then cross 280/300 lux in both directions. Verify wrong passwords still return 401 and negative lux returns 400. Do not treat local decision tests as evidence that Azure deployment succeeded.
+
+Limitations: no physical sensors, measured energy, fault alerts or manual per-lamp override in this release. The GitHub Pages standalone demo remains separate and uses its original stateless rules.

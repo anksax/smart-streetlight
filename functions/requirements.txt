@@ -1,0 +1,3 @@
+azure-functions>=1.21,<2
+azure-data-tables>=12.6,<13
+azure-identity>=1.19,<2

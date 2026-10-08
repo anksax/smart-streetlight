@@ -13,3 +13,10 @@ input:not([type=checkbox]),select{background:var(--input);border-color:var(--lin
 .street-scene.daylight .lamp-name,.street-scene.daylight .lamp-state{color:#213a50}
 .street-scene.daylight .lamp.selected .lamp-name{color:#006659;font-weight:700}
 .street-scene.daylight #activity-marker{color:#002e28;font-weight:700}
+
+/* Smooth command display; telemetry remains authoritative. */
+.bulb{transition:background .8s}.glow{transition:opacity 1.2s}
+.street-scene{transition:background 1s}
+#activity-marker{font-size:11px;background:#143c48;padding:6px 10px;border-radius:12px;color:#8df8de;transition:left 1.5s ease}
+.street-scene.daylight #activity-marker{background:#edfdf9}
+@media(prefers-reduced-motion:reduce){#activity-marker,.glow,.bulb{transition:none!important}}

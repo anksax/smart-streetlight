@@ -10,8 +10,8 @@ from azure.data.tables import TableServiceClient, UpdateMode
 from azure.identity import ManagedIdentityCredential
 
 app = Flask(__name__)
-DEFAULTS = dict(hour=22.0, lux=40.0, activity_lamp=0, follow=True)
-FIELDS = ['received_at','ambient_lux','simulation_hour','motion','state','brightness','reason']
+DEFAULTS = dict(hour=22.0, lux=40.0, activity_lamp=0, follow=True, auto_demo=False)
+FIELDS = ['received_at','ambient_lux','simulation_hour','motion','state','brightness','reason','activity_position','demo_mode','motion_held','hold_remaining_seconds']
 
 def storage():
     return TableServiceClient(endpoint=os.environ['TABLE_STORAGE_ENDPOINT'], credential=ManagedIdentityCredential())
@@ -63,7 +63,9 @@ def update_settings():
             raise ValueError('Activity position must be 0 to 5')
         if type(data['follow']) is not bool:
             raise ValueError('Follow must be true or false')
-        updated = dict(hour=float(data['hour']),lux=float(data['lux']),activity_lamp=data['activity_lamp'],follow=data['follow'])
+        if type(data.get('auto_demo', False)) is not bool:
+            raise ValueError('Automatic demo must be true or false')
+        updated = dict(auto_demo=data.get('auto_demo',False),hour=float(data['hour']),lux=float(data['lux']),activity_lamp=data['activity_lamp'],follow=data['follow'])
         with storage() as service:
             service.get_table_client('Settings').upsert_entity(dict(PartitionKey='simulation',RowKey='global',**updated),mode=UpdateMode.REPLACE)
         return jsonify(updated)
